@@ -7,16 +7,18 @@ from app.tool.base import BaseTool
 
 
 class PythonExecute(BaseTool):
-    """A tool for executing Python code with timeout and safety restrictions."""
+    """用于执行Python代码的工具，具有超时和安全限制。"""
 
     name: str = "python_execute"
-    description: str = "Executes Python code string. Note: Only print outputs are visible, function return values are not captured. Use print statements to see results."
+    description: str = (
+        "执行Python代码字符串。注意：只有打印输出可见，函数返回值不会被捕获。使用print语句查看结果。"
+    )
     parameters: dict = {
         "type": "object",
         "properties": {
             "code": {
                 "type": "string",
-                "description": "The Python code to execute.",
+                "description": "要执行的Python代码。",
             },
         },
         "required": ["code"],
@@ -36,6 +38,32 @@ class PythonExecute(BaseTool):
         finally:
             sys.stdout = original_stdout
 
+    def _check_forbidden_operations(self, code: str) -> str:
+        """检查代码中是否包含被禁止的网络操作"""
+
+        forbidden_patterns = [
+            "requests.get",
+            "requests.post",
+            "urllib.request",
+            "urllib.urlopen",
+            "http.client",
+            "httplib",
+            "socket.create_connection",
+            "BeautifulSoup",
+            "scraping",
+            "api.nasa.gov",
+            "spaceflightnewsapi",
+            "lldev.thespacedevs.com",
+            "www.nasa.gov",
+        ]
+
+        code_lower = code.lower()
+        for pattern in forbidden_patterns:
+            if pattern.lower() in code_lower:
+                return f"❌ 代码包含被禁止的网络操作: {pattern}\n请只使用数据库中的现有数据进行分析。"
+
+        return ""
+
     async def execute(
         self,
         code: str,
@@ -51,6 +79,14 @@ class PythonExecute(BaseTool):
         Returns:
             Dict: Contains 'output' with execution output or error message and 'success' status.
         """
+
+        # 检查是否包含被禁止的网络操作
+        forbidden_check = self._check_forbidden_operations(code)
+        if forbidden_check:
+            return {
+                "observation": forbidden_check,
+                "success": False,
+            }
 
         with multiprocessing.Manager() as manager:
             result = manager.dict({"observation": "", "success": False})
@@ -69,7 +105,7 @@ class PythonExecute(BaseTool):
                 proc.terminate()
                 proc.join(1)
                 return {
-                    "observation": f"Execution timeout after {timeout} seconds",
+                    "observation": f"执行超时，超过{timeout}秒",
                     "success": False,
                 }
             return dict(result)

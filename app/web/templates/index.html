@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能分析平台</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <!-- 基础样式 -->
+    <link href="/static/css/main.css" rel="stylesheet">
+
+    <!-- 组件样式 -->
+    <link href="/static/css/components/notification.css" rel="stylesheet">
+    <link href="/static/css/components/modal.css" rel="stylesheet">
+    <link href="/static/css/components/drawer.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="chat-app">
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="newChatBtn">
+                    <i class="fas fa-plus"></i>
+                    <span>新对话</span>
+                </button>
+            </div>
+
+            <div class="chat-history">
+                <div class="history-section">
+                    <h3>今天</h3>
+                    <div class="history-items" id="todayHistory">
+                        <!-- 历史对话项目将在这里动态添加 -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <button class="help-btn" id="helpBtn">
+                    <i class="fas fa-question-circle"></i>
+                    <span>帮助</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- 主聊天区域 -->
+        <main class="chat-main">
+            <!-- 聊天头部 -->
+            <header class="chat-header">
+                <button class="sidebar-toggle" id="sidebarToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="chat-title">
+                    <h1>智能数据分析助手</h1>
+                    <span class="chat-subtitle">基于AI的数据库分析平台</span>
+                </div>
+            </header>
+
+            <!-- 聊天内容区域 -->
+            <div class="chat-content" id="chatContent">
+                <!-- 欢迎界面 -->
+                <div class="welcome-screen" id="welcomeScreen">
+                    <div class="welcome-content">
+                        <div class="welcome-icon">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <h2>开始您的数据分析之旅</h2>
+                        <p>我可以帮您分析数据库、生成图表、处理数据等。请在下方输入您的需求。</p>
+
+                        <div class="quick-examples">
+                            <h3>快速示例</h3>
+                            <div class="example-grid">
+                                <button class="example-card" data-example="分析数据库中所有表的结构和关系">
+                                    <i class="fas fa-sitemap"></i>
+                                    <span>数据库结构分析</span>
+                                </button>
+                                <button class="example-card" data-example="检查数据质量问题，包括空值和重复数据">
+                                    <i class="fas fa-shield-alt"></i>
+                                    <span>数据质量检查</span>
+                                </button>
+                                <button class="example-card" data-example="统计用户行为数据并生成可视化图表">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span>用户行为分析</span>
+                                </button>
+                                <button class="example-card" data-example="分析销售数据趋势和地区分布">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <span>销售业绩分析</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 对话消息区域 -->
+                <div class="messages-container" id="messagesContainer" style="display: none;">
+                    <!-- 对话消息将在这里动态添加 -->
+                </div>
+            </div>
+
+            <!-- 输入区域 -->
+            <div class="chat-input-area">
+                <div class="input-container">
+                    <div class="input-main">
+                        <div class="input-wrapper">
+                            <textarea id="messageInput" placeholder="输入您的数据分析需求..." rows="1"
+                                maxlength="2000"></textarea>
+                            <div class="analysis-mode-selector">
+                                <div class="mode-options">
+                                    <label class="mode-option" title="自动创建分析计划，适合复杂任务">
+                                        <input type="radio" name="flow_type" value="planning" checked>
+                                        <span class="mode-badge planning">
+                                            <i class="fas fa-brain"></i>
+                                            智能规划
+                                        </span>
+                                    </label>
+                                    <label class="mode-option" title="立即处理请求，适合简单查询">
+                                        <input type="radio" name="flow_type" value="direct">
+                                        <span class="mode-badge direct">
+                                            <i class="fas fa-bolt"></i>
+                                            直接执行
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                            <button class="send-btn" id="sendBtn" disabled>
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
+                        <div class="input-controls">
+                            <div class="input-hint-inline">
+                                <span class="hint-text">按 Enter 发送，Shift + Enter 换行</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 核心框架 -->
+    <script src="/static/js/core/event-bus.js"></script>
+
+    <!-- 管理器 -->
+    <script src="/static/js/managers/session-manager.js"></script>
+    <script src="/static/js/managers/websocket-manager.js"></script>
+    <script src="/static/js/managers/ui-manager.js"></script>
+
+    <!-- 组件 -->
+    <script src="/static/js/components/input-component.js"></script>
+    <script src="/static/js/components/chat-component.js"></script>
+    <script src="/static/js/components/results-component.js"></script>
+    <script src="/static/js/components/notification-component.js"></script>
+    <script src="/static/js/components/sidebar-component.js"></script>
+
+    <!-- 应用入口 -->
+    <script src="/static/js/core/app.js"></script>
+</body>
+
+</html>

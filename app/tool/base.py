@@ -1,3 +1,6 @@
+import datetime
+import decimal
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
@@ -32,6 +35,23 @@ class BaseTool(ABC, BaseModel):
         }
 
 
+class CustomJSONEncoder(json.JSONEncoder):
+    """自定义 JSON 编码器，支持 datetime、decimal 等类型"""
+
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.date):
+            return obj.isoformat()
+        elif isinstance(obj, datetime.time):
+            return obj.isoformat()
+        elif isinstance(obj, decimal.Decimal):
+            return float(obj)
+        elif hasattr(obj, "__dict__"):
+            return str(obj)
+        return super().default(obj)
+
+
 class ToolResult(BaseModel):
     """Represents the result of a tool execution."""
 
@@ -64,7 +84,16 @@ class ToolResult(BaseModel):
         )
 
     def __str__(self):
-        return f"Error: {self.error}" if self.error else self.output
+        if self.error:
+            return f"Error: {self.error}"
+        elif self.output is not None:
+            if isinstance(self.output, (list, dict)):
+                return json.dumps(
+                    self.output, ensure_ascii=False, indent=2, cls=CustomJSONEncoder
+                )
+            return str(self.output)
+        else:
+            return ""
 
     def replace(self, **kwargs):
         """Returns a new ToolResult with the given fields replaced."""

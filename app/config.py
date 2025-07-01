@@ -30,64 +30,29 @@ class LLMSettings(BaseModel):
     api_version: str = Field(..., description="Azure Openai version if AzureOpenai")
 
 
+class MySQLSettings(BaseModel):
+    """Configuration for MySQL database connection"""
+
+    host: str = Field("127.0.0.1", description="MySQL server host")
+    port: int = Field(3306, description="MySQL server port")
+    user: str = Field(..., description="MySQL username")
+    password: str = Field(..., description="MySQL password")
+    database: str = Field(..., description="MySQL database name")
+    charset: str = Field("utf8mb4", description="Character set to use")
+    connect_timeout: int = Field(30, description="Connection timeout in seconds")
+    read_timeout: int = Field(30, description="Read timeout in seconds")
+    write_timeout: int = Field(30, description="Write timeout in seconds")
+
+
 class ProxySettings(BaseModel):
     server: str = Field(None, description="Proxy server address")
     username: Optional[str] = Field(None, description="Proxy username")
     password: Optional[str] = Field(None, description="Proxy password")
 
 
-class SearchSettings(BaseModel):
-    engine: str = Field(default="Google", description="Search engine the llm to use")
-    fallback_engines: List[str] = Field(
-        default_factory=lambda: ["DuckDuckGo", "Baidu", "Bing"],
-        description="Fallback search engines to try if the primary engine fails",
-    )
-    retry_delay: int = Field(
-        default=60,
-        description="Seconds to wait before retrying all engines again after they all fail",
-    )
-    max_retries: int = Field(
-        default=3,
-        description="Maximum number of times to retry all engines when all fail",
-    )
-    lang: str = Field(
-        default="en",
-        description="Language code for search results (e.g., en, zh, fr)",
-    )
-    country: str = Field(
-        default="us",
-        description="Country code for search results (e.g., us, cn, uk)",
-    )
-
-
 class RunflowSettings(BaseModel):
     use_data_analysis_agent: bool = Field(
         default=False, description="Enable data analysis agent in run flow"
-    )
-
-
-class BrowserSettings(BaseModel):
-    headless: bool = Field(False, description="Whether to run browser in headless mode")
-    disable_security: bool = Field(
-        True, description="Disable browser security features"
-    )
-    extra_chromium_args: List[str] = Field(
-        default_factory=list, description="Extra arguments to pass to the browser"
-    )
-    chrome_instance_path: Optional[str] = Field(
-        None, description="Path to a Chrome instance to use"
-    )
-    wss_url: Optional[str] = Field(
-        None, description="Connect to a browser instance via WebSocket"
-    )
-    cdp_url: Optional[str] = Field(
-        None, description="Connect to a browser instance via CDP"
-    )
-    proxy: Optional[ProxySettings] = Field(
-        None, description="Proxy settings for the browser"
-    )
-    max_content_length: int = Field(
-        2000, description="Maximum length for content retrieval operations"
     )
 
 
@@ -154,14 +119,9 @@ class MCPSettings(BaseModel):
 
 class AppConfig(BaseModel):
     llm: Dict[str, LLMSettings]
+    mysql: Optional[MySQLSettings] = Field(None, description="MySQL configuration")
     sandbox: Optional[SandboxSettings] = Field(
         None, description="Sandbox configuration"
-    )
-    browser_config: Optional[BrowserSettings] = Field(
-        None, description="Browser configuration"
-    )
-    search_config: Optional[SearchSettings] = Field(
-        None, description="Search configuration"
     )
     mcp_config: Optional[MCPSettings] = Field(None, description="MCP configuration")
     run_flow_config: Optional[RunflowSettings] = Field(
@@ -226,43 +186,12 @@ class Config:
             "api_version": base_llm.get("api_version", ""),
         }
 
-        # handle browser config.
-        browser_config = raw_config.get("browser", {})
-        browser_settings = None
+        # MySQL configuration
+        mysql_config = raw_config.get("mysql", {})
+        mysql_settings = None
+        if mysql_config:
+            mysql_settings = MySQLSettings(**mysql_config)
 
-        if browser_config:
-            # handle proxy settings.
-            proxy_config = browser_config.get("proxy", {})
-            proxy_settings = None
-
-            if proxy_config and proxy_config.get("server"):
-                proxy_settings = ProxySettings(
-                    **{
-                        k: v
-                        for k, v in proxy_config.items()
-                        if k in ["server", "username", "password"] and v
-                    }
-                )
-
-            # filter valid browser config parameters.
-            valid_browser_params = {
-                k: v
-                for k, v in browser_config.items()
-                if k in BrowserSettings.__annotations__ and v is not None
-            }
-
-            # if there is proxy settings, add it to the parameters.
-            if proxy_settings:
-                valid_browser_params["proxy"] = proxy_settings
-
-            # only create BrowserSettings when there are valid parameters.
-            if valid_browser_params:
-                browser_settings = BrowserSettings(**valid_browser_params)
-
-        search_config = raw_config.get("search", {})
-        search_settings = None
-        if search_config:
-            search_settings = SearchSettings(**search_config)
         sandbox_config = raw_config.get("sandbox", {})
         if sandbox_config:
             sandbox_settings = SandboxSettings(**sandbox_config)
@@ -291,12 +220,17 @@ class Config:
                     for name, override_config in llm_overrides.items()
                 },
             },
+            "mysql": mysql_settings,
             "sandbox": sandbox_settings,
-            "browser_config": browser_settings,
-            "search_config": search_settings,
             "mcp_config": mcp_settings,
             "run_flow_config": run_flow_settings,
         }
+
+        for name, llm_setting in config_dict["llm"].items():
+            try:
+                config_dict["llm"][name] = LLMSettings(**llm_setting)
+            except Exception as e:
+                raise ValueError(f"Invalid LLM config for '{name}': {e}")
 
         self._config = AppConfig(**config_dict)
 
@@ -305,35 +239,27 @@ class Config:
         return self._config.llm
 
     @property
+    def mysql(self) -> Optional[MySQLSettings]:
+        return self._config.mysql
+
+    @property
     def sandbox(self) -> SandboxSettings:
         return self._config.sandbox
 
     @property
-    def browser_config(self) -> Optional[BrowserSettings]:
-        return self._config.browser_config
-
-    @property
-    def search_config(self) -> Optional[SearchSettings]:
-        return self._config.search_config
-
-    @property
     def mcp_config(self) -> MCPSettings:
-        """Get the MCP configuration"""
         return self._config.mcp_config
 
     @property
     def run_flow_config(self) -> RunflowSettings:
-        """Get the Run Flow configuration"""
         return self._config.run_flow_config
 
     @property
     def workspace_root(self) -> Path:
-        """Get the workspace root directory"""
         return WORKSPACE_ROOT
 
     @property
     def root_path(self) -> Path:
-        """Get the root path of the application"""
         return PROJECT_ROOT
 
 

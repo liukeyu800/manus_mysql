@@ -118,24 +118,78 @@ api_key = "sk-..."  # Replace with your actual API key
 
 ## Quick Start
 
-One line for run OpenManus:
+### 🚀 Easiest Way to Start
 
 ```bash
+# User-friendly startup script (Recommended)
+python start.py
+```
+
+This interactive script will guide you through all available options and features.
+
+### 🎯 Direct Run Modes
+
+```bash
+# Quick demo of all features
+python quick_start.py
+
+# Basic Agent mode
 python main.py
-```
 
-Then input your idea via terminal!
-
-For MCP tool version, you can run:
-```bash
-python run_mcp.py
-```
-
-For unstable multi-agent version, you also can run:
-
-```bash
+# Multi-agent collaboration mode
 python run_flow.py
+
+# MCP protocol mode
+python run_mcp.py --interactive
+
+# MCP server
+python run_mcp_server.py
+
+# Web interface (Database Analysis)
+python start_web.py
 ```
+
+### 🌐 Web Interface
+
+OpenManus provides a web-based interface for database analysis:
+
+```bash
+# Start web interface (default port 8001)
+python start_web.py
+
+# Custom port and host
+python start_web.py --port 8080 --host 127.0.0.1
+
+# Enable hot reload for development
+python start_web.py --reload
+```
+
+Then open your browser and navigate to `http://localhost:8001` to access the web interface.
+
+### 📊 MySQL Database Features
+
+```bash
+# MySQL configuration demo
+python examples/mysql_config_demo.py
+
+# Detailed MySQL tools demo
+python examples/mysql_usage_guide.py
+
+# Simple MySQL example
+python examples/mysql_simple_example.py
+```
+
+### 🛠️ Available Run Options
+
+| Script | Description | Best For |
+|--------|-------------|----------|
+| `start.py` | Interactive startup menu | **New users** |
+| `start_web.py` | Web interface | **Database analysis** |
+| `quick_start.py` | Feature demonstration | Testing setup |
+| `main.py` | Basic Agent | Simple tasks |
+| `run_flow.py` | Multi-agent planning | Complex tasks |
+| `run_mcp.py` | MCP protocol | Extensions |
+| `examples/usage_demo.py` | Comprehensive demo | Learning features |
 
 ### Custom Adding Multiple Agents
 

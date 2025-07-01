@@ -14,35 +14,35 @@ from app.tool.base import BaseTool
 
 class DataVisualization(BaseTool):
     name: str = "data_visualization"
-    description: str = """Visualize statistical chart or Add insights in chart with JSON info from visualization_preparation tool. You can do steps as follows:
-1. Visualize statistical chart
-2. Choose insights into chart based on step 1 (Optional)
-Outputs:
-1. Charts (png/html)
-2. Charts Insights (.md)(Optional)"""
+    description: str = """使用visualization_preparation工具的JSON信息可视化统计图表或在图表中添加洞察。您可以按照以下步骤操作：
+1. 可视化统计图表
+2. 基于步骤1在图表中选择洞察（可选）
+输出：
+1. 图表（png/html）
+2. 图表洞察（.md）（可选）"""
     parameters: dict = {
         "type": "object",
         "properties": {
             "json_path": {
                 "type": "string",
-                "description": """file path of json info with ".json" in the end""",
+                "description": """以".json"结尾的json信息文件路径""",
             },
             "output_type": {
-                "description": "Rendering format (html=interactive)",
+                "description": "渲染格式（html=交互式）",
                 "type": "string",
                 "default": "html",
                 "enum": ["png", "html"],
             },
             "tool_type": {
-                "description": "visualize chart or add insights",
+                "description": "可视化图表或添加洞察",
                 "type": "string",
                 "default": "visualization",
                 "enum": ["visualization", "insight"],
             },
             "language": {
-                "description": "english(en) / chinese(zh)",
+                "description": "英语(en) / 中文(zh)",
                 "type": "string",
-                "default": "en",
+                "default": "zh",
                 "enum": ["zh", "en"],
             },
         },
@@ -139,7 +139,7 @@ Outputs:
                 )
         if len(error_list) > 0:
             return {
-                "observation": f"# Error chart generated{'\n'.join(error_list)}\n{self.success_output_template(success_list)}",
+                "observation": f"# Error chart generated{chr(10).join(error_list)}\n{self.success_output_template(success_list)}",
                 "success": False,
             }
         else:
@@ -187,7 +187,7 @@ Outputs:
         )
         if len(error_list) > 0:
             return {
-                "observation": f"# Error in chart insights:{'\n'.join(error_list)}\n{success_template}",
+                "observation": f"# Error in chart insights:{chr(10).join(error_list)}\n{success_template}",
                 "success": False,
             }
         else:

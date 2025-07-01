@@ -1,6 +1,5 @@
 from setuptools import find_packages, setup
 
-
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
@@ -23,13 +22,8 @@ setup(
         "numpy",
         "datasets>=3.2,<3.5",
         "html2text~=2024.2.26",
-        "gymnasium>=1.0,<1.2",
-        "pillow>=10.4,<11.2",
-        "browsergym~=0.13.3",
         "uvicorn~=0.34.0",
         "unidiff~=0.7.5",
-        "browser-use~=0.1.40",
-        "googlesearch-python~=1.3.0",
         "aiofiles~=24.1.0",
         "pydantic_core>=2.27.2,<2.28.0",
         "colorama~=0.4.6",

@@ -1,0 +1,114 @@
+import asyncio
+import json
+import os
+import uuid
+from pathlib import Path
+from typing import Dict, Optional
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+
+# 简化版本，专注核心功能
+app = FastAPI(title="OpenManus Web - 数据库分析界面", version="1.0.0")
+
+# 获取当前文件所在目录
+current_dir = Path(__file__).parent
+
+# 设置静态文件目录
+try:
+    app.mount("/static", StaticFiles(directory=current_dir / "static"), name="static")
+except RuntimeError:
+    pass  # 目录不存在时忽略
+
+# 设置模板目录
+try:
+    templates = Jinja2Templates(directory=current_dir / "templates")
+except:
+    templates = None
+
+
+class ChatRequest(BaseModel):
+    prompt: str
+    flow_type: str = "planning"
+
+
+# 会话存储
+sessions: Dict[str, dict] = {}
+
+
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "ok", "message": "OpenManus Web服务正常运行"}
+
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """主页"""
+    if templates:
+        return templates.TemplateResponse("index.html", {"request": request})
+    else:
+        return HTMLResponse(
+            """
+        <html>
+            <head><title>OpenManus Web</title></head>
+            <body>
+                <h1>OpenManus Web界面</h1>
+                <p>数据库分析专用界面</p>
+                <p>模板文件缺失，请检查安装。</p>
+            </body>
+        </html>
+        """
+        )
+
+
+@app.post("/api/chat")
+async def create_chat_session(request: ChatRequest):
+    """创建分析会话"""
+    session_id = str(uuid.uuid4())
+    workspace = f"workspace_{session_id[:8]}"
+
+    sessions[session_id] = {
+        "session_id": session_id,
+        "prompt": request.prompt,
+        "flow_type": request.flow_type,
+        "workspace": workspace,
+        "status": "created",
+        "start_time": asyncio.get_event_loop().time(),
+    }
+
+    return {"session_id": session_id, "workspace": workspace, "status": "created"}
+
+
+@app.get("/api/chat/{session_id}")
+async def get_chat_session(session_id: str):
+    """获取会话状态"""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    return sessions[session_id]
+
+
+@app.post("/api/chat/{session_id}/cancel")
+async def cancel_chat_session(session_id: str):
+    """取消会话"""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    sessions[session_id]["status"] = "cancelled"
+    return {"status": "cancelled"}
+
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """获取历史会话列表"""
+    return list(sessions.values())
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)

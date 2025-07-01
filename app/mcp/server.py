@@ -1,7 +1,6 @@
 import logging
 import sys
 
-
 logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(sys.stderr)])
 
 import argparse
@@ -14,9 +13,18 @@ from typing import Any, Dict, Optional
 from mcp.server.fastmcp import FastMCP
 
 from app.logger import logger
+from app.tool import (
+    MySQLDescribeTable,
+    MySQLGetDatabaseInfo,
+    MySQLListTables,
+    MySQLReadQuery,
+    MySQLSaveQueryResults,
+    MySQLShowCreateTable,
+    MySQLShowTableIndexes,
+)
 from app.tool.base import BaseTool
 from app.tool.bash import Bash
-from app.tool.browser_use_tool import BrowserUseTool
+from app.tool.python_execute import PythonExecute
 from app.tool.str_replace_editor import StrReplaceEditor
 from app.tool.terminate import Terminate
 
@@ -30,9 +38,18 @@ class MCPServer:
 
         # Initialize standard tools
         self.tools["bash"] = Bash()
-        self.tools["browser"] = BrowserUseTool()
         self.tools["editor"] = StrReplaceEditor()
         self.tools["terminate"] = Terminate()
+
+        # Initialize database tools
+        self.tools["python_execute"] = PythonExecute()
+        self.tools["mysql_read_query"] = MySQLReadQuery()
+        self.tools["mysql_list_tables"] = MySQLListTables()
+        self.tools["mysql_describe_table"] = MySQLDescribeTable()
+        self.tools["mysql_show_indexes"] = MySQLShowTableIndexes()
+        self.tools["mysql_show_create_table"] = MySQLShowCreateTable()
+        self.tools["mysql_get_database_info"] = MySQLGetDatabaseInfo()
+        self.tools["mysql_save_query_results"] = MySQLSaveQueryResults()
 
     def register_tool(self, tool: BaseTool, method_name: Optional[str] = None) -> None:
         """Register a tool with parameter validation and documentation."""
@@ -138,16 +155,19 @@ class MCPServer:
     async def cleanup(self) -> None:
         """Clean up server resources."""
         logger.info("Cleaning up resources")
-        # Follow original cleanup logic - only clean browser tool
-        if "browser" in self.tools and hasattr(self.tools["browser"], "cleanup"):
-            await self.tools["browser"].cleanup()
+        # Clean up any tools that have cleanup methods
+        for tool in self.tools.values():
+            if hasattr(tool, "cleanup"):
+                await tool.cleanup()
 
     def register_all_tools(self) -> None:
         """Register all tools with the server."""
         for tool in self.tools.values():
             self.register_tool(tool)
 
-    def run(self, transport: str = "stdio") -> None:
+    def run(
+        self, transport: str = "stdio", host: str = "127.0.0.1", port: int = 8000
+    ) -> None:
         """Run the MCP server."""
         # Register all tools
         self.register_all_tools()
@@ -157,7 +177,14 @@ class MCPServer:
 
         # Start server (with same logging as original)
         logger.info(f"Starting OpenManus server ({transport} mode)")
-        self.server.run(transport=transport)
+
+        if transport == "sse":
+            logger.info(f"SSE server will be available at http://{host}:{port}/sse")
+            # FastMCP for SSE mode might need different parameters
+            self.server.run(transport=transport)
+        else:
+            # stdio mode - the default
+            self.server.run(transport=transport)
 
 
 def parse_args() -> argparse.Namespace:
@@ -165,9 +192,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OpenManus MCP Server")
     parser.add_argument(
         "--transport",
-        choices=["stdio"],
+        choices=["stdio", "sse"],
         default="stdio",
-        help="Communication method: stdio or http (default: stdio)",
+        help="Communication method: stdio or sse (default: stdio)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for SSE server (default: 8000)",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host for SSE server (default: 127.0.0.1)",
     )
     return parser.parse_args()
 
@@ -177,4 +215,4 @@ if __name__ == "__main__":
 
     # Create and run server (maintaining original flow)
     server = MCPServer()
-    server.run(transport=args.transport)
+    server.run(transport=args.transport, host=args.host, port=args.port)

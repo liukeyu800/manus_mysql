@@ -1,16 +1,17 @@
+import asyncio
 import json
 import time
 from enum import Enum
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import Field
 
-from app.agent.base import BaseAgent
+from app.agent.base import AgentState, BaseAgent
 from app.flow.base import BaseFlow
 from app.llm import LLM
 from app.logger import logger
-from app.schema import AgentState, Message, ToolChoice
-from app.tool import PlanningTool
+from app.schema import Message, ToolChoice
+from app.tool.planning import PlanningTool
 
 
 class PlanStepStatus(str, Enum):
@@ -50,6 +51,8 @@ class PlanningFlow(BaseFlow):
     executor_keys: List[str] = Field(default_factory=list)
     active_plan_id: str = Field(default_factory=lambda: f"plan_{int(time.time())}")
     current_step_index: Optional[int] = None
+    original_query: Optional[str] = Field(default=None)
+    step_results: List[Dict[str, Any]] = Field(default_factory=list)
 
     def __init__(
         self, agents: Union[BaseAgent, List[BaseAgent], Dict[str, BaseAgent]], **data
@@ -97,6 +100,10 @@ class PlanningFlow(BaseFlow):
             if not self.primary_agent:
                 raise ValueError("No primary agent available")
 
+            # Store the original query and initialize step results storage
+            self.original_query = input_text
+            self.step_results = []
+
             # Create initial plan if input provided
             if input_text:
                 await self._create_initial_plan(input_text)
@@ -115,18 +122,42 @@ class PlanningFlow(BaseFlow):
 
                 # Exit if no more steps or plan completed
                 if self.current_step_index is None:
-                    result += await self._finalize_plan()
+                    result = (
+                        await self._finalize_plan()
+                    )  # Return final answer instead of appending
                     break
 
                 # Execute current step with appropriate agent
                 step_type = step_info.get("type") if step_info else None
                 executor = self.get_executor(step_type)
                 step_result = await self._execute_step(executor, step_info)
-                result += step_result + "\n"
 
-                # Check if agent wants to terminate
+                # Store detailed step results for final answer generation
+                step_detail = {
+                    "step_index": self.current_step_index,
+                    "step_info": step_info,
+                    "result": step_result,
+                    "timestamp": time.time(),
+                }
+                self.step_results.append(step_detail)
+
+                # Don't append intermediate results to final output
+                # result += step_result + "\n"
+
+                # Check if agent wants to terminate (强化terminate检查)
                 if hasattr(executor, "state") and executor.state == AgentState.FINISHED:
+                    logger.info(
+                        f"Agent {executor.name} requested termination via state={executor.state}"
+                    )
+                    # Mark all remaining steps as completed when terminated early
+                    await self._mark_all_remaining_steps_completed()
                     break
+
+                # 注释掉额外的terminate检查，只依赖agent状态
+                # if ("terminate" in step_result.lower() and ...):
+                #     logger.info(f"Agent execution completed via terminate tool in step {self.current_step_index}")
+                #     await self._mark_all_remaining_steps_completed()
+                #     break
 
             return result
         except Exception as e:
@@ -138,9 +169,9 @@ class PlanningFlow(BaseFlow):
         logger.info(f"Creating initial plan with ID: {self.active_plan_id}")
 
         system_message_content = (
-            "You are a planning assistant. Create a concise, actionable plan with clear steps. "
-            "Focus on key milestones rather than detailed sub-steps. "
-            "Optimize for clarity and efficiency."
+            "你是一个规划助手，负责创建简洁、可执行的计划。"
+            "专注于关键里程碑而非详细子步骤。"
+            "优化清晰度和效率。"
         )
         agents_description = []
         for key in self.executor_keys:
@@ -154,9 +185,9 @@ class PlanningFlow(BaseFlow):
         if len(agents_description) > 1:
             # Add description of agents to select
             system_message_content += (
-                f"\nNow we have {agents_description} agents. "
-                f"The infomation of them are below: {json.dumps(agents_description)}\n"
-                "When creating steps in the planning tool, please specify the agent names using the format '[agent_name]'."
+                f"\n现在我们有 {agents_description} 个代理。"
+                f"它们的信息如下: {json.dumps(agents_description)}\n"
+                "在planning工具中创建步骤时，请使用'[代理名称]'格式指定代理名称。"
             )
 
         # Create a system message for plan creation
@@ -164,7 +195,7 @@ class PlanningFlow(BaseFlow):
 
         # Create a user message with the request
         user_message = Message.user_message(
-            f"Create a reasonable plan with clear steps to accomplish the task: {request}"
+            f"请创建一个合理的计划，包含清晰的步骤来完成任务: {request}"
         )
 
         # Call LLM with PlanningTool
@@ -205,8 +236,8 @@ class PlanningFlow(BaseFlow):
             **{
                 "command": "create",
                 "plan_id": self.active_plan_id,
-                "title": f"Plan for: {request[:50]}{'...' if len(request) > 50 else ''}",
-                "steps": ["Analyze request", "Execute task", "Verify results"],
+                "title": f"计划: {request[:50]}{'...' if len(request) > 50 else ''}",
+                "steps": ["分析请求", "执行任务", "验证结果"],
             }
         )
 
@@ -282,13 +313,13 @@ class PlanningFlow(BaseFlow):
 
         # Create a prompt for the agent to execute the current step
         step_prompt = f"""
-        CURRENT PLAN STATUS:
+        当前计划状态:
         {plan_status}
 
-        YOUR CURRENT TASK:
-        You are now working on step {self.current_step_index}: "{step_text}"
+        你的当前任务:
+        你现在正在执行步骤 {self.current_step_index}: "{step_text}"
 
-        Please only execute this current step using the appropriate tools. When you're done, provide a summary of what you accomplished.
+        请仅执行此当前步骤，使用适当的工具。完成后，请提供你所完成工作的简要总结。
         """
 
         # Use agent.run() to execute the step
@@ -301,7 +332,7 @@ class PlanningFlow(BaseFlow):
             return step_result
         except Exception as e:
             logger.error(f"Error executing step {self.current_step_index}: {e}")
-            return f"Error executing step {self.current_step_index}: {str(e)}"
+            return f"执行步骤 {self.current_step_index} 时出错: {str(e)}"
 
     async def _mark_step_completed(self) -> None:
         """Mark the current step as completed."""
@@ -404,24 +435,43 @@ class PlanningFlow(BaseFlow):
             return f"Error: Unable to retrieve plan with ID {self.active_plan_id}"
 
     async def _finalize_plan(self) -> str:
-        """Finalize the plan and provide a summary using the flow's LLM directly."""
+        """Finalize the plan and provide a comprehensive answer to the original question."""
         plan_text = await self._get_plan_text()
 
-        # Create a summary using the flow's LLM directly
+        # Get all execution results from completed steps
+        execution_results = await self._collect_execution_results()
+
+        # Create a comprehensive answer using the flow's LLM directly
         try:
             system_message = Message.system_message(
-                "You are a planning assistant. Your task is to summarize the completed plan."
+                """你是一个数据分析专家和助手。你的任务是根据执行结果来回答用户的原始问题。
+
+指导原则：
+1. 直接回答用户的问题，而不是总结执行过程
+2. 使用执行结果中的具体数据和信息
+3. 提供清晰、准确、有用的回答
+4. 用中文回答，语言要专业但易懂
+5. 如果执行结果中有具体的数据、表格、文件等，要在回答中体现
+6. 回答要针对性强，解决用户的实际需求"""
             )
 
             user_message = Message.user_message(
-                f"The plan has been completed. Here is the final plan status:\n\n{plan_text}\n\nPlease provide a summary of what was accomplished and any final thoughts."
+                f"""原始问题: {getattr(self, 'original_query', '用户查询')}
+
+执行过程的详细结果:
+{execution_results}
+
+计划执行状态:
+{plan_text}
+
+请基于以上执行结果，直接回答用户的原始问题。重点关注实际得到的数据和信息，而不是执行过程本身。"""
             )
 
             response = await self.llm.ask(
                 messages=[user_message], system_msgs=[system_message]
             )
 
-            return f"Plan completed:\n\n{response}"
+            return response
         except Exception as e:
             logger.error(f"Error finalizing plan with LLM: {e}")
 
@@ -429,14 +479,70 @@ class PlanningFlow(BaseFlow):
             try:
                 agent = self.primary_agent
                 summary_prompt = f"""
-                The plan has been completed. Here is the final plan status:
+                用户的原始问题: {getattr(self, 'original_query', '用户查询')}
 
-                {plan_text}
+                执行过程的详细结果:
+                {execution_results}
 
-                Please provide a summary of what was accomplished and any final thoughts.
+                请基于执行结果直接回答用户的原始问题，提供有用的信息和数据。
                 """
                 summary = await agent.run(summary_prompt)
-                return f"Plan completed:\n\n{summary}"
+                return summary
             except Exception as e2:
                 logger.error(f"Error finalizing plan with agent: {e2}")
-                return "Plan completed. Error generating summary."
+                return "分析完成，但生成最终回答时出错。"
+
+    async def _mark_all_remaining_steps_completed(self) -> None:
+        """Mark all remaining steps as completed when task is terminated early."""
+        if (
+            not self.active_plan_id
+            or self.active_plan_id not in self.planning_tool.plans
+        ):
+            return
+
+        try:
+            plan_data = self.planning_tool.plans[self.active_plan_id]
+            steps = plan_data.get("steps", [])
+            step_statuses = plan_data.get("step_statuses", [])
+
+            # Ensure step_statuses list is the right length
+            while len(step_statuses) < len(steps):
+                step_statuses.append(PlanStepStatus.NOT_STARTED.value)
+
+            # Mark current step and all remaining steps as completed
+            if self.current_step_index is not None:
+                for i in range(self.current_step_index, len(steps)):
+                    step_statuses[i] = PlanStepStatus.COMPLETED.value
+
+            plan_data["step_statuses"] = step_statuses
+            logger.info(
+                f"Marked steps {self.current_step_index} to {len(steps)-1} as completed"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to mark remaining steps as completed: {e}")
+
+    async def _collect_execution_results(self) -> str:
+        """Collect and format all execution results from completed steps."""
+        if not hasattr(self, "step_results") or not self.step_results:
+            return "没有可用的执行结果。"
+
+        formatted_results = []
+
+        for step_detail in self.step_results:
+            step_index = step_detail["step_index"]
+            step_info = step_detail["step_info"]
+            result = step_detail["result"]
+
+            step_text = step_info.get("text", f"步骤 {step_index + 1}")
+
+            formatted_results.append(
+                f"""
+步骤 {step_index + 1}: {step_text}
+执行结果:
+{result}
+{'='*60}
+"""
+            )
+
+        return "\n".join(formatted_results)

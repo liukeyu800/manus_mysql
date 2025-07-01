@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import AsyncExitStack
 from typing import Dict, List, Optional
 
@@ -106,7 +107,13 @@ class MCPClients(ToolCollection):
         # Create proper tool objects for each server tool
         for tool in response.tools:
             original_name = tool.name
-            tool_name = f"mcp_{server_id}_{original_name}"
+            # 简化工具名称：如果只有一个服务器，直接使用原始名称
+            if len(self.sessions) == 1:
+                tool_name = original_name
+            else:
+                # 多服务器时使用简化的前缀
+                tool_name = f"{server_id}_{original_name}"
+
             tool_name = self._sanitize_tool_name(tool_name)
 
             server_tool = MCPClientTool(
@@ -129,20 +136,28 @@ class MCPClients(ToolCollection):
         """Sanitize tool name to match MCPClientTool requirements."""
         import re
 
-        # Replace invalid characters with underscores
-        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+        # 对于标准的工具名称，保持原样
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", name) and len(name) <= 64:
+            return name
 
-        # Remove consecutive underscores
+        # 仅对特殊字符进行处理
+        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+
+        # 移除连续的下划线
         sanitized = re.sub(r"_+", "_", sanitized)
 
-        # Remove leading/trailing underscores
+        # 移除开头和结尾的下划线
         sanitized = sanitized.strip("_")
 
-        # Truncate to 64 characters if needed
-        if len(sanitized) > 64:
-            sanitized = sanitized[:64]
+        # 确保以字母开头
+        if sanitized and not sanitized[0].isalpha():
+            sanitized = "tool_" + sanitized
 
-        return sanitized
+        # 截断到合理长度
+        if len(sanitized) > 64:
+            sanitized = sanitized[:64].rstrip("_")
+
+        return sanitized or "unnamed_tool"
 
     async def list_tools(self) -> ListToolsResult:
         """List all available tools."""
@@ -162,14 +177,26 @@ class MCPClients(ToolCollection):
                     # Close the exit stack which will handle session cleanup
                     if exit_stack:
                         try:
-                            await exit_stack.aclose()
-                        except RuntimeError as e:
-                            if "cancel scope" in str(e).lower():
+                            # Add timeout to prevent hanging
+                            async with asyncio.timeout(5.0):  # 5 second timeout
+                                await exit_stack.aclose()
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                f"Timeout while disconnecting from {server_id}, forcing cleanup"
+                            )
+                        except (RuntimeError, asyncio.CancelledError) as e:
+                            if "cancel scope" in str(e).lower() or isinstance(
+                                e, asyncio.CancelledError
+                            ):
                                 logger.warning(
-                                    f"Cancel scope error during disconnect from {server_id}, continuing with cleanup: {e}"
+                                    f"Cancel scope/cancelled error during disconnect from {server_id}, continuing with cleanup: {e}"
                                 )
                             else:
                                 raise
+                        except Exception as e:
+                            logger.warning(
+                                f"Unexpected error during exit stack cleanup for {server_id}: {e}"
+                            )
 
                     # Clean up references
                     self.sessions.pop(server_id, None)
@@ -179,16 +206,30 @@ class MCPClients(ToolCollection):
                     self.tool_map = {
                         k: v
                         for k, v in self.tool_map.items()
-                        if v.server_id != server_id
+                        if getattr(v, "server_id", None) != server_id
                     }
                     self.tools = tuple(self.tool_map.values())
                     logger.info(f"Disconnected from MCP server {server_id}")
                 except Exception as e:
                     logger.error(f"Error disconnecting from server {server_id}: {e}")
+                    # Force cleanup even if there was an error
+                    self.sessions.pop(server_id, None)
+                    self.exit_stacks.pop(server_id, None)
+                    self.tool_map = {
+                        k: v
+                        for k, v in self.tool_map.items()
+                        if getattr(v, "server_id", None) != server_id
+                    }
+                    self.tools = tuple(self.tool_map.values())
         else:
             # Disconnect from all servers in a deterministic order
-            for sid in sorted(list(self.sessions.keys())):
+            server_ids = list(self.sessions.keys())
+            for sid in server_ids:
                 await self.disconnect(sid)
+
+            # Final cleanup to ensure everything is cleared
+            self.sessions.clear()
+            self.exit_stacks.clear()
             self.tool_map = {}
             self.tools = tuple()
             logger.info("Disconnected from all MCP servers")

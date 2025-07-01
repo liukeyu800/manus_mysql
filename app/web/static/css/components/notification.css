@@ -1,0 +1,111 @@
+/* 通知组件样式 */
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+.notification {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    margin-bottom: 12px;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+    pointer-events: auto;
+    border-left: 4px solid var(--primary-color);
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification.removing {
+    opacity: 0;
+    transform: translateX(100%);
+    margin-bottom: 0;
+    max-height: 0;
+    overflow: hidden;
+}
+
+.notification-content {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    gap: 12px;
+}
+
+.notification-message {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.notification-close:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* 不同类型的通知 */
+.notification-info {
+    border-left-color: var(--primary-color);
+}
+
+.notification-info i {
+    color: var(--primary-color);
+}
+
+.notification-success {
+    border-left-color: var(--success-color);
+}
+
+.notification-success i {
+    color: var(--success-color);
+}
+
+.notification-warning {
+    border-left-color: var(--warning-color);
+}
+
+.notification-warning i {
+    color: var(--warning-color);
+}
+
+.notification-error {
+    border-left-color: var(--error-color);
+}
+
+.notification-error i {
+    color: var(--error-color);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .notification-container {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+
+    .notification-content {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+}
