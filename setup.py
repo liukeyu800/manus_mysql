@@ -14,8 +14,8 @@ setup(
     url="https://github.com/FoundationAgents/OpenManus",
     packages=find_packages(),
     install_requires=[
-        "pydantic~=2.10.4",
-        "openai>=1.58.1,<1.67.0",
+        "pydantic>=2.10.4,<2.12.0",
+        "openai>=1.58.1,<1.94.0",
         "tenacity~=9.0.0",
         "pyyaml~=6.0.2",
         "loguru~=0.7.3",
@@ -25,7 +25,7 @@ setup(
         "uvicorn~=0.34.0",
         "unidiff~=0.7.5",
         "aiofiles~=24.1.0",
-        "pydantic_core>=2.27.2,<2.28.0",
+        "pydantic_core>=2.27.2,<2.36.0",
         "colorama~=0.4.6",
     ],
     classifiers=[
